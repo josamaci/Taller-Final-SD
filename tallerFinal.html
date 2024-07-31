@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulario</title>
+</head>
+<body>
+    <h1>Formulario</h1>
+    <form id="form">
+        <label for="cedula">Cédula:</label>
+        <input type="text" id="cedula" name="cedula" required>
+        <br>
+        <label for="nombre">Nombre:</label>
+        <input type="text" id="nombre" name="nombre" required>
+        <br>
+        <label for="apellido">Apellido:</label>
+        <input type="text" id="apellido" name="apellido" required>
+        <br>
+        <label for="Foto">Foto:</label>
+        <input type="file" id="fileInput" accept="image/*" />
+        <br>
+        <button type="button" onclick="enviar()">Enviar</button>
+    </form>
+    <p id="result"></p>
+
+    <h2>Usuarios Registrados</h2>
+    <ul id="userList"></ul>
+
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.953.0.min.js"></script>
+    <script>
+
+        AWS.config.update({
+            accessKeyId: '',
+            secretAccessKey: '',
+            sessionToken: '',
+            region: ''
+        });
+
+        const s3 = new AWS.S3();
+
+        async function enviar() {
+
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Por favor, sube una imagen');
+                return;
+            }
+            const validImageTypes = ['image/gif', 'image/jpeg', 'image/png'];
+            if (!validImageTypes.includes(file.type)) {
+                alert('Sube un tipo de imagen válido (gif, jpeg, png)');
+                return;
+            }
+
+            const params = {
+                Bucket: 'taller-final',
+                Key: file.name,
+                Body: file,
+                ContentType: file.type,
+                ACL: 'public-read' 
+            };
+
+            s3.upload(params, async (err, data) => {
+                if (err) {
+                    console.error('Error uploading file:', err);
+                    alert('File upload failed');
+                } else {
+                    console.log('Successfully uploaded file.', data);
+                    const urlFoto = data.Location;
+                    const cedula = document.getElementById('cedula').value;
+                    const nombre = document.getElementById('nombre').value;
+                    const apellido = document.getElementById('apellido').value;
+
+                    try {
+                        
+                        console.log(JSON.stringify({
+                                TableName: "tallerFinal",
+                                Item: {
+                                    Usuario: cedula,
+                                    Apellido: apellido,
+                                    Nombre: nombre,
+                                    Foto: urlFoto
+                                }
+                            }))
+                        const response = await fetch("https://l5476uk410.execute-api.us-east-1.amazonaws.com/default/tallerFinal", {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                TableName: "tallerFinal",
+                                Item: {
+                                    Usuario: cedula,
+                                    Apellido: apellido,
+                                    Nombre: nombre,
+                                    Foto: urlFoto
+                                }
+                            })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Problema de red' + response.statusText);
+                        }
+
+                        const result = await response.json();
+                        console.log('Respuesta:', result);
+                        alert('Todo subido!');
+                        obtenerUsuarios();
+                    } catch (error) {
+                        console.error('Error:', error);
+                        alert('Error!');
+                    }
+                }
+            });
+
+        }
+
+        async function obtenerUsuarios() {
+            try {
+                const response = await fetch("https://l5476uk410.execute-api.us-east-1.amazonaws.com/default/tallerFinal?TableName=tallerFinal", {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Problema de red: ' + response.statusText);
+                }
+
+                const data = await response.json();
+                console.log('Usuarios:', data);
+                mostrarUsuarios(data.Items);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function mostrarUsuarios(usuarios) {
+            const userList = document.getElementById('userList');
+            userList.innerHTML = ''; // Limpiar lista antes de agregar nuevos usuarios
+
+            usuarios.forEach(usuario => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <p><strong>Cédula:</strong> ${usuario.Usuario}</p>
+                    <p><strong>Nombre:</strong> ${usuario.Nombre}</p>
+                    <p><strong>Apellido:</strong> ${usuario.Apellido}</p>
+                    <img src="${usuario.Foto}" alt="Foto" style="width: 100px; height: auto;"/>
+                `;
+                userList.appendChild(li);
+            });
+        }
+
+        // Cargar usuarios al iniciar la página
+        document.addEventListener('DOMContentLoaded', obtenerUsuarios);
+
+    </script>
+</body>
+</html>
